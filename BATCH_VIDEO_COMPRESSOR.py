@@ -14,6 +14,15 @@ input_folder_path = r'E:\Cache\input'
 output_folder_path = r'E:\Cache\output'
 log_folder_path = r'E:\Cache\log'
 
+# 设置临时文件夹
+env = os.environ.copy()
+temp_folder = r'E:\Cache\log'
+env['TMP'] = temp_folder
+env['TEMP'] = temp_folder
+
+# 检查临时文件夹是否存在，如果不存在，则创建它
+os.makedirs(temp_folder, exist_ok=True)
+
 # 配置日志记录器，将时间戳添加到文件名中
 logging.basicConfig(filename=f'{log_folder_path}\\transcoding_{timestamp}.log', level=logging.INFO)
 
@@ -40,6 +49,10 @@ def compress_file(filepath):
         width, height = get_resolution(filepath)
 
         # Determine the maximum bitrate based on the resolution
+        #720P-最大2M码率
+        #1080P-最大4M码率
+        #2K-最大10M码率
+        #2K往上-最大20M码率
         short_side = min(width, height)
         if short_side <= 720:
             max_bitrate = 2000000
@@ -53,7 +66,7 @@ def compress_file(filepath):
         # Limit the new bitrate to the maximum bitrate
         new_bitrate = min(new_bitrate, max_bitrate)
 
-        # 生成新的文件名（在原文件名的基础上添加 "_compressed" 后缀）
+        # 生成新的文件名
         new_filename = os.path.join(output_folder_path, os.path.relpath(filepath, input_folder_path))
         new_dirname = os.path.dirname(new_filename)
         os.makedirs(new_dirname, exist_ok=True)
@@ -64,7 +77,8 @@ def compress_file(filepath):
             return None
         cmd = f'ffmpeg -err_detect ignore_err -i "{filepath}" -c:v hevc_nvenc -b:v {new_bitrate} -c:a aac "{new_filename}"'
         subprocess.check_call(cmd, shell=True, env=env)  # 这里我们使用 check_call，如果命令返回非零值，则抛出 CalledProcessError
-
+        #使用N卡的HEVC编码器编码视频，音频用aac，也可以改成copy
+        
         # 记录日志
         logging.info(f'Successfully compressed: {filepath} from {original_bitrate} to {new_bitrate}. New file: {new_filename}')
 
@@ -91,18 +105,8 @@ def get_video_files(input_folder_path):
 # 获取输入文件夹中的所有视频文件
 video_files = get_video_files(input_folder_path)
 
-# 创建一个线程池
-
-# 设置临时文件夹
-env = os.environ.copy()
-temp_folder = r'E:\Cache\log'
-env['TMP'] = temp_folder
-env['TEMP'] = temp_folder
-
-# 检查临时文件夹是否存在，如果不存在，则创建它
-os.makedirs(temp_folder, exist_ok=True)
-
-with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+# 创建一个线程池，注意自己换线程数，取决于你的显卡，自己去官网查，比如现在RTX4080是2核5线程，不可以超过线程数
+with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
     # 将任务提交到线程池，收集结果
     results = executor.map(compress_file, video_files)
 
